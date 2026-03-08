@@ -1,1 +1,9 @@
 .blackjack-des-venv/
+
+.pytest-cache/
+
+src/blackjack_des/__pycache__/
+
+tests/__pycache__/
+
+.gitignore
