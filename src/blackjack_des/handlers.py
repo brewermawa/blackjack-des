@@ -79,3 +79,24 @@ def handle_early_exit_check(state, event, now):
         return [resolve_round(time=now+1)]
     else:
         return [player_turn(time=now+1, hand_index=0)]
+    
+
+def handle_player_turn(state, event, now):
+    allowed_states = {
+        State.RoundState.DEALING,
+        State.RoundState.PLAYER_ACTING,
+    }
+    if state.round_state not in allowed_states:
+        raise ValueError(f"PLAYER_ACTING not permitted in state: {state.round_state}")
+    
+    
+    hand_index = event.data.get("hand_index", None)
+
+    if hand_index is None:
+        raise ValueError("player_turn requires hand_index")
+    
+    if not isinstance(hand_index, int) or isinstance(hand_index, bool):
+        raise ValueError("player_turn data['hand_index'] must be an int")
+    
+    if hand_index < 0 or hand_index >= len(state.round.player_hands):
+        raise ValueError(f"player_turn invalid hand_index: {hand_index}")
