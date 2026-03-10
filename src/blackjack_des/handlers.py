@@ -1,10 +1,15 @@
-from .state import State
+from blackjack_des.state import State
+from blackjack_des.engine.core import Event
+from cards import Hand
 from blackjack.blackjack_eval import BlackJackEval
 from blackjack.strategy import BlackJackStrategy
+from blackjack.round import BlackJackRound
+from blackjack.fixed_deck import FixedDeck
 from blackjack_des.events import(
     deal_card, dealing_completed, early_exit_check, player_turn,
     player_turn_completed, dealer_turn, dealer_turn_completed, resolve_round,
-) 
+)
+
 
 
 def handle_round_started(state, event, now):
@@ -80,6 +85,10 @@ def handle_early_exit_check(state, event, now):
     else:
         return [player_turn(time=now+1, hand_index=0)]
     
+def _next_hand_or_completed(hand_index, number_of_hands, now):
+    if hand_index < number_of_hands - 1:
+        return [player_turn(time=now+1, hand_index=hand_index+1)]
+    return [player_turn_completed(time=now+1)]
 
 def handle_player_turn(state, event, now):
     allowed_states = {
@@ -88,7 +97,6 @@ def handle_player_turn(state, event, now):
     }
     if state.round_state not in allowed_states:
         raise ValueError(f"PLAYER_ACTING not permitted in state: {state.round_state}")
-    
     
     hand_index = event.data.get("hand_index", None)
 
@@ -100,3 +108,89 @@ def handle_player_turn(state, event, now):
     
     if hand_index < 0 or hand_index >= len(state.round.player_hands):
         raise ValueError(f"player_turn invalid hand_index: {hand_index}")
+    
+    number_of_player_hands = len(state.round.player_hands)
+    state.round_state = State.RoundState.PLAYER_ACTING
+    player_hand = state.round.player_hands[hand_index]["hand"]
+    dealer_hand = state.round.dealer_hand
+    dealer_card = dealer_hand.cards[0]
+
+    if len(player_hand) == 1:
+        return [
+            deal_card(time=now+1, target="player", hand_index=hand_index),
+            player_turn(time=now+2, hand_index=hand_index)
+        ]
+
+    if BlackJackEval.bust(player_hand) or BlackJackEval.value(player_hand) >= 21:
+        return _next_hand_or_completed(hand_index, number_of_player_hands, now)
+
+    correct_move = BlackJackStrategy.strategy(player_hand, dealer_card)
+
+    if correct_move == BlackJackStrategy.Action.SURRENDER:
+        if number_of_player_hands > 1:
+            return [
+                deal_card(time=now+1, target="player", hand_index=hand_index),
+                player_turn(time=now+2, hand_index=hand_index)
+            ]
+        else:
+            state.round.player_hands[hand_index]["surrendered"] = True
+            return _next_hand_or_completed(hand_index, number_of_player_hands, now)
+        
+    if correct_move == BlackJackStrategy.Action.SPLIT:
+        if number_of_player_hands == 3:
+            return [
+                deal_card(time=now+1, target="player", hand_index=hand_index),
+                player_turn(time=now+2, hand_index=hand_index)
+            ]
+
+        new_player_hand = Hand()
+        new_player_hand.add_card(player_hand.remove_last_card())
+        state.round.player_hands.append({"hand": new_player_hand, "doubled": False, "surrendered": False})
+
+        #split aces
+        if player_hand.cards[0].rank == "A":
+            return [
+                deal_card(time=now+1, target="player", hand_index=hand_index),
+                deal_card(time=now+2, target="player", hand_index=hand_index+1),
+                player_turn_completed(time=now+3)
+            ]
+
+        return [player_turn(time=now+2, hand_index=hand_index)]
+        
+    if correct_move == BlackJackStrategy.Action.DOUBLE:
+        state.round.player_hands[hand_index]["doubled"] = True
+        return [deal_card(time=now+1, target="player", hand_index=hand_index)] + (_next_hand_or_completed(hand_index, number_of_player_hands, now))
+    
+    if correct_move == BlackJackStrategy.Action.HIT:
+        return [
+            deal_card(time=now+1, target="player", hand_index=hand_index),
+            player_turn(time=now+2, hand_index=hand_index)
+        ]
+
+    if correct_move == BlackJackStrategy.Action.STAND:
+        return _next_hand_or_completed(hand_index, number_of_player_hands, now)
+    
+
+
+if __name__ == "__main__":
+    fixed_deck = FixedDeck()
+    fixed_deck.deck_for_split_AA_only_one_extra_card_per_hand()
+    round = BlackJackRound(deck=fixed_deck, hits_soft_17=False)
+    state = State(round=round, round_state=State.RoundState.DEALING)
+
+    card = state.round.deck.draw(1)[0]
+    state.round.player_hands[0]["hand"].add_card(card)
+
+    card = state.round.deck.draw(1)[0]
+    state.round.dealer_hand.add_card(card)
+
+    card = state.round.deck.draw(1)[0]
+    state.round.player_hands[0]["hand"].add_card(card)
+
+    card = state.round.deck.draw(1)[0]
+    state.round.dealer_hand.add_card(card)
+
+    event = Event(time=0, type="PLAYER_TURN_COMPLETED")
+    next_events = handle_player_turn(state, event, 0)
+
+    print(next_events)
