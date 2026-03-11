@@ -85,10 +85,12 @@ def handle_early_exit_check(state, event, now):
     else:
         return [player_turn(time=now+1, hand_index=0)]
     
+
 def _next_hand_or_completed(hand_index, number_of_hands, now):
     if hand_index < number_of_hands - 1:
         return [player_turn(time=now+1, hand_index=hand_index+1)]
     return [player_turn_completed(time=now+1)]
+
 
 def handle_player_turn(state, event, now):
     allowed_states = {
@@ -170,6 +172,9 @@ def handle_player_turn(state, event, now):
     if correct_move == BlackJackStrategy.Action.STAND:
         return _next_hand_or_completed(hand_index, number_of_player_hands, now)
     
+
+def handle_player_turn_completed(state, event, now):
+    pass
 
 
 if __name__ == "__main__":
