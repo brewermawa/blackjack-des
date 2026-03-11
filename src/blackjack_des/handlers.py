@@ -197,6 +197,12 @@ def handle_dealer_turn(state, event, now):
 
     return [dealer_turn_completed(time=now+1)]
     
+
+def handle_dealer_turn_completed(state, event, now):
+    if state.round_state != State.RoundState.DEALER_ACTING:
+        raise ValueError(f"dealer_turn_completed not permitted in state: {state.round_state}")
+    
+    return [resolve_round(time=now+1)]
     
 
 
