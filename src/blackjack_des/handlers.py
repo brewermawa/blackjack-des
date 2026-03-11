@@ -174,14 +174,37 @@ def handle_player_turn(state, event, now):
     
 
 def handle_player_turn_completed(state, event, now):
-    pass
+    if state.round_state != State.RoundState.PLAYER_ACTING:
+        raise ValueError(f"player_turn_completed not permitted in state: {state.round_state}")
+    
+    return [dealer_turn(time=now+1)]
+
+
+def handle_dealer_turn(state, event, now):
+    if state.round_state != State.RoundState.PLAYER_ACTING:
+        raise ValueError(f"player_turn_completed not permitted in state: {state.round_state}")
+    
+    state.round_state = State.RoundState.DEALER_ACTING
+    dealer_hand = state.round.dealer_hand
+    hits_soft_17 = state.round.hits_soft_17
+    soft_17 = BlackJackEval.soft(dealer_hand) and BlackJackEval.value(dealer_hand) == 17
+
+    if (soft_17 and hits_soft_17) or (BlackJackEval.value(dealer_hand) < 17):
+        return [
+            deal_card(time=now+1, target="dealer"),
+            dealer_turn(time=now+2)
+        ]
+
+    return [dealer_turn_completed(time=now+1)]
+    
+    
 
 
 if __name__ == "__main__":
     fixed_deck = FixedDeck()
-    fixed_deck.deck_for_split_AA_only_one_extra_card_per_hand()
+    fixed_deck.deck_for_dealer_soft_17()
     round = BlackJackRound(deck=fixed_deck, hits_soft_17=False)
-    state = State(round=round, round_state=State.RoundState.DEALING)
+    state = State(round=round, round_state=State.RoundState.PLAYER_ACTING)
 
     card = state.round.deck.draw(1)[0]
     state.round.player_hands[0]["hand"].add_card(card)
@@ -195,7 +218,7 @@ if __name__ == "__main__":
     card = state.round.deck.draw(1)[0]
     state.round.dealer_hand.add_card(card)
 
-    event = Event(time=0, type="PLAYER_TURN_COMPLETED")
-    next_events = handle_player_turn(state, event, 0)
+    event = Event(time=0, type="DEALER_TURN", data={})
+    next_events = handle_dealer_turn(state, event, 0)
 
     print(next_events)

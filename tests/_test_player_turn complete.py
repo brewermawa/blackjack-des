@@ -9,12 +9,12 @@ from blackjack_des.handlers import handle_player_turn_completed
 from blackjack_des.engine.core import Event
 
 
-class TestPlayerRound:
+class TestPlayerTurnCompleted:
     @pytest.fixture
     def default_state(self):
-        fixed_deck = FixedDeck()
-        round = BlackJackRound(deck=fixed_deck, hits_soft_17=False)
-        state = State(round=round, round_state=State.RoundState.DEALING)
+        deck = FixedDeck()
+        round = BlackJackRound(deck=deck, hits_soft_17=False)
+        state = State(round=round, round_state=State.RoundState.PLAYER_ACTING)
 
         return state
     
@@ -29,11 +29,16 @@ class TestPlayerRound:
             State.RoundState.RESOLVING
         ]
     )
-    def test_raises_value_error_if_state_is_not_dealing_or_player_acting(self, round_state):
-        deck = Deck()
-        round = BlackJackRound(deck=deck, hits_soft_17=False)
-        state = State(round=round, round_state=round_state)
+    def test_raises_value_error_if_state_is_not_dealing_or_player_acting(self, default_state, round_state):
+        default_state.round_state = round_state
         
         with pytest.raises(ValueError):
-            handle_player_turn_completed(state, None, 0)
+            handle_player_turn_completed(default_state, None, 0)
+
+
+    def test_test_next_event_is_dealer_turn(self, default_state):
+        event = player_turn_completed(time=0)
+        next_events = handle_player_turn_completed(default_state, event, 0)
+
+        assert next_events[0].type == "DEALER_TURN"
 
