@@ -5,6 +5,7 @@ from blackjack.blackjack_eval import BlackJackEval
 from blackjack.strategy import BlackJackStrategy
 from blackjack.round import BlackJackRound
 from blackjack.fixed_deck import FixedDeck
+from blackjack.roundoutcome import RoundOutcome
 from blackjack_des.events import(
     deal_card, dealing_completed, early_exit_check, player_turn,
     player_turn_completed, dealer_turn, dealer_turn_completed, resolve_round,
@@ -203,14 +204,66 @@ def handle_dealer_turn_completed(state, event, now):
         raise ValueError(f"dealer_turn_completed not permitted in state: {state.round_state}")
     
     return [resolve_round(time=now+1)]
-    
+
+
+def handle_resolve_round(state, event, now):
+    if state.round_state not in [State.RoundState.DEALER_ACTING, State.RoundState.DEALING]:
+        raise ValueError(f"handle_resolve_round not permitted in state: {state.round_state}")
+
+    state.outcomes = []
+    player_hands = state.round.player_hands
+    dealer_hand = state.round.dealer_hand
+
+    for player_hand in player_hands:
+        hand = player_hand["hand"]
+
+        print(hand.cards)
+        print(dealer_hand.cards)
+
+
+
+        player_bj = BlackJackEval.blackjack(hand)
+        dealer_bj = BlackJackEval.blackjack(dealer_hand)
+
+        if player_bj and not dealer_bj:
+            outcome = RoundOutcome.BLACKJACK
+        elif not player_bj and dealer_bj:
+            outcome = RoundOutcome.LOSS
+        elif player_bj and dealer_bj:
+            outcome = RoundOutcome.PUSH
+
+        elif player_hand["surrendered"]:
+            outcome = RoundOutcome.HALF_PAY
+
+        elif BlackJackEval.bust(hand):
+            outcome = RoundOutcome.LOSS
+
+        elif BlackJackEval.bust(dealer_hand):
+            outcome = (RoundOutcome.DOUBLE_WIN if player_hand["doubled"] else RoundOutcome.WIN)
+
+        else:
+            player_value = BlackJackEval.value(hand)
+            dealer_value = BlackJackEval.value(dealer_hand)
+
+            if player_value > dealer_value:
+                outcome = (RoundOutcome.DOUBLE_WIN if player_hand["doubled"] else RoundOutcome.WIN)
+            elif player_value < dealer_value:
+                outcome = (RoundOutcome.DOUBLE_LOSS if player_hand["doubled"] else RoundOutcome.LOSS)
+            else:
+                outcome = RoundOutcome.PUSH
+
+        state.outcomes.append(outcome)
+
+    state.round_state = State.RoundState.DONE
+    return []
+
 
 
 if __name__ == "__main__":
     fixed_deck = FixedDeck()
-    fixed_deck.deck_for_dealer_soft_17()
+    fixed_deck.deck_for_bj()
     round = BlackJackRound(deck=fixed_deck, hits_soft_17=False)
-    state = State(round=round, round_state=State.RoundState.PLAYER_ACTING)
+    state = State(round=round, round_state=State.RoundState.DEALER_ACTING)
 
     card = state.round.deck.draw(1)[0]
     state.round.player_hands[0]["hand"].add_card(card)
@@ -224,7 +277,8 @@ if __name__ == "__main__":
     card = state.round.deck.draw(1)[0]
     state.round.dealer_hand.add_card(card)
 
-    event = Event(time=0, type="DEALER_TURN", data={})
-    next_events = handle_dealer_turn(state, event, 0)
 
-    print(next_events)
+    event = Event(time=0, type="RESOLVE_ROUND", data={})
+    outcomes = handle_resolve_round(state, event, 0)
+
+    print(outcomes)
