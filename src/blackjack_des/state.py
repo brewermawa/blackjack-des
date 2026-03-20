@@ -21,5 +21,3 @@ class State:
     outcomes: Optional[List[RoundOutcome]] = None
     active_hand_index: Optional[int] = None
     
-
-    

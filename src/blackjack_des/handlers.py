@@ -73,11 +73,15 @@ def handle_deal_card(state, event, now):
         
     return []
 
+def handle_dealing_completed(state, event, now):
+    return [early_exit_check(time=now+1)]
+
 
 def handle_early_exit_check(state, event, now):
     if state.round_state != State.RoundState.DEALING:
         raise ValueError("EARLY_EXIT_CHECK is only valid in DEALING state")
     
+   
     player_bj = BlackJackEval.blackjack(state.round.player_hands[0]["hand"])
     dealer_bj = BlackJackEval.blackjack(state.round.dealer_hand)
 
@@ -182,8 +186,8 @@ def handle_player_turn_completed(state, event, now):
 
 
 def handle_dealer_turn(state, event, now):
-    if state.round_state != State.RoundState.PLAYER_ACTING:
-        raise ValueError(f"player_turn_completed not permitted in state: {state.round_state}")
+    if state.round_state not in [State.RoundState.PLAYER_ACTING, State.RoundState.DEALER_ACTING]:
+        raise ValueError(f"dealer_turn not permitted in state: {state.round_state}")
     
     state.round_state = State.RoundState.DEALER_ACTING
     dealer_hand = state.round.dealer_hand
@@ -217,22 +221,24 @@ def handle_resolve_round(state, event, now):
     for player_hand in player_hands:
         hand = player_hand["hand"]
 
-        print(hand.cards)
-        print(dealer_hand.cards)
+        if len(player_hand["hand"]) == 2 and len(dealer_hand) == 2 and len(state.round.player_hands) == 1:
+            player_bj = BlackJackEval.blackjack(hand)
+            dealer_bj = BlackJackEval.blackjack(dealer_hand)
 
+            if player_bj and not dealer_bj:
+                outcome = RoundOutcome.BLACKJACK
+                state.outcomes.append(outcome)
+                continue
+            elif not player_bj and dealer_bj:
+                outcome = RoundOutcome.LOSS
+                state.outcomes.append(outcome)
+                continue
+            elif player_bj and dealer_bj:
+                outcome = RoundOutcome.PUSH
+                state.outcomes.append(outcome)
+                continue
 
-
-        player_bj = BlackJackEval.blackjack(hand)
-        dealer_bj = BlackJackEval.blackjack(dealer_hand)
-
-        if player_bj and not dealer_bj:
-            outcome = RoundOutcome.BLACKJACK
-        elif not player_bj and dealer_bj:
-            outcome = RoundOutcome.LOSS
-        elif player_bj and dealer_bj:
-            outcome = RoundOutcome.PUSH
-
-        elif player_hand["surrendered"]:
+        if player_hand["surrendered"]:
             outcome = RoundOutcome.HALF_PAY
 
         elif BlackJackEval.bust(hand):

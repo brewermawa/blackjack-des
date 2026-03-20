@@ -44,8 +44,6 @@ def run_simulation(
     if observers is None:
         observers = []
 
-    
-
     while len(events) >= 1 and events_processed < max_events:
         event_to_process = heapq.heappop(events)
 
@@ -83,3 +81,5 @@ def run_simulation(
     )
 
     return result
+
+
